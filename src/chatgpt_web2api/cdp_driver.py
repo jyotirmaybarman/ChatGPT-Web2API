@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import urllib.parse
@@ -1448,6 +1449,12 @@ class CDPDriver:
 
     # ── Message Input ─────────────────────────────────────────
 
+    async def upload_files(self, paths: list[str | os.PathLike[str]]) -> list:
+        """Attach local files to the current ChatGPT composer."""
+        from .file_upload import upload_files_to_composer
+
+        return await upload_files_to_composer(self, paths)
+
     async def type_message(self, text: str) -> None:
         """Type text into the ChatGPT composer.
 
@@ -1499,12 +1506,12 @@ class CDPDriver:
 
         selector = (
             "document.querySelectorAll("
-            "'[data-message-author-role=\"assistant\"]'"
+            "'[data-message-author-role=\"assistant\"], [data-content-search-unit-key$=\":assistant\"], [data-chatgpt-search-unit-key$=\":assistant\"]'"
             ").length"
         )
         user_selector = (
             "document.querySelectorAll("
-            "'[data-message-author-role=\"user\"]'"
+            "'[data-message-author-role=\"user\"], [data-content-search-unit-key$=\":user\"], [data-chatgpt-search-unit-key$=\":user\"]'"
             ").length"
         )
         max_attempts = 3
@@ -1596,7 +1603,8 @@ class CDPDriver:
         Polls briefly (3s at 0.5s intervals). Never raises.
         """
         import time as _time
-        from .chatgpt_dom import COMPOSER_SELECTOR, COMPOSER_FALLBACK_SELECTOR
+
+        from .chatgpt_dom import COMPOSER_FALLBACK_SELECTOR, COMPOSER_SELECTOR
 
         pre_send_count = getattr(self, "_pre_send_user_count", None)
         if pre_send_count is None:
@@ -1610,7 +1618,7 @@ class CDPDriver:
                 result = await self._js_strict(
                     "(function() {"
                     "  var userMsgs = document.querySelectorAll("
-                    "    '[data-message-author-role=\"user\"]').length;"
+                    "    '[data-message-author-role=\"user\"], [data-content-search-unit-key$=\":user\"], [data-chatgpt-search-unit-key$=\":user\"]').length;"
                     f"  var composer = document.querySelector('{COMPOSER_SELECTOR}')"
                     f"       || document.querySelector('{COMPOSER_FALLBACK_SELECTOR}');"
                     "  var composerPresent = !!composer;"
@@ -1847,7 +1855,7 @@ class CDPDriver:
                 # never accepted.
                 last_status = "not_ready"
                 last_diagnostic = {}
-                for _ in range(60):
+                for _ in range(16):
                     result = await self._fetch_text_for_turn(conv_id, turn_anchor)
                     last_status = result.status
                     last_diagnostic = result.diagnostic or {}
@@ -1878,7 +1886,7 @@ class CDPDriver:
                     # If the last status was non_text (genuinely non-text
                     # response after full polling), fall through to the
                     # placeholder below. Otherwise raise a typed error.
-                    if last_status != "non_text":
+                    if last_status != "non_text" and not last_dom_text:
                         raise TurnReconciliationError(
                             conversation_id=conv_id,
                             anchor_mode=turn_anchor.mode,

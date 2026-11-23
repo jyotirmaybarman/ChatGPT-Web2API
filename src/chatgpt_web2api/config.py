@@ -63,7 +63,7 @@ class ServerConfig:
     port: int = 8080
     host: str = "127.0.0.1"
     api_keys: list[str] = field(default_factory=list)
-    request_timeout: int = 120
+    request_timeout: int = 600
 
 
 @dataclass
@@ -105,10 +105,10 @@ class ChatGPTConfig:
     # a longer first-content window (300s) so their silent thinking phase
     # isn't falsely aborted.
     detector_reasoning_first_content_timeout_seconds: float = 300
-    detector_reasoning_stream_idle_timeout_seconds: float = 120
-    detector_default_first_content_timeout_seconds: float = 90
-    detector_default_stream_idle_timeout_seconds: float = 90
-    detector_hard_timeout_seconds: float = 900
+    detector_reasoning_stream_idle_timeout_seconds: float = 300
+    detector_default_first_content_timeout_seconds: float = 300
+    detector_default_stream_idle_timeout_seconds: float = 300
+    detector_hard_timeout_seconds: float = 1800
 
 
 @dataclass

@@ -377,7 +377,7 @@ class CompletionDetector:
 
             try:
                 raw = await d._js_strict(
-                    "document.querySelectorAll('[data-message-author-role=\"assistant\"]').length"
+                    "document.querySelectorAll('[data-message-author-role=\"assistant\"], [data-content-search-unit-key$=\":assistant\"], [data-chatgpt-search-unit-key$=\":assistant\"]').length"
                 )
                 current_count = int(raw or 0)
             except CDPJSError:
@@ -474,7 +474,7 @@ class CompletionDetector:
             try:
                 result = await d._js_strict(
                     "(function() {"
-                    "  var msgs = document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
+                    "  var msgs = document.querySelectorAll('[data-message-author-role=\"assistant\"], [data-content-search-unit-key$=\":assistant\"], [data-chatgpt-search-unit-key$=\":assistant\"]');"
                     "  if (!msgs.length) return JSON.stringify({text:'', md_text:'', html_len:0, child_count:0, has_action:false, is_thinking:false});"
                     "  var last = msgs[msgs.length - 1];"
                     # Text: the clean answer lives in ``.markdown`` textContent.
@@ -555,7 +555,8 @@ class CompletionDetector:
                     "  var hasThinkingEl = !!last.querySelector('.result-thinking');"
                     "  var visibleThinking = /^(thinking|reasoning)\\b/i.test(rawText.trim());"
                     "  var is_thinking = !has_action && (hasThinkingEl || (visibleThinking && !mdText));"
-                    "  return JSON.stringify({text: text, md_text: mdText, html_len: html_len, child_count: child_count, has_action: has_action, is_thinking: is_thinking});"
+                    "  var has_stop = !!document.querySelector('[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"停止\"]');"
+                    "  return JSON.stringify({text: text, md_text: mdText, html_len: html_len, child_count: child_count, has_action: has_action, is_thinking: is_thinking, has_stop: has_stop});"
                     "})()",
                 )
                 data = json.loads(result)
@@ -569,6 +570,10 @@ class CompletionDetector:
             child_count = data.get("child_count", 0)
             has_action = data.get("has_action", False)
             is_thinking = data.get("is_thinking", False)
+            has_stop = data.get("has_stop", False)
+            if not has_stop and last_dom_text and (md_text or current) == last_dom_text and (time.monotonic() - last_change_time >= 4.0):
+                logger.info("DOM stop-button gone and text stable 4s (fallback completion)")
+                break
 
             # Streaming source: prefer the clean .markdown answer container
             # over the innerText fallback (which carries the reasoning label).
@@ -730,7 +735,7 @@ class CompletionDetector:
             # empty answer off a stale button.
             if (
                 has_action
-                and (not conv_id_for_check or backend_fetch_failed)
+                and (not conv_id_for_check or backend_fetch_failed or has_action)
                 and (last_dom_text or had_non_text_content)
             ):
                 logger.info("DOM has_action (fallback completion) — no backend signal")
